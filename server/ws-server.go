@@ -13,6 +13,7 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 )
@@ -31,11 +32,14 @@ var closeCodes map[int]string = map[int]string{
 
 const bufferSize = 4096
 
+var sockets []Websocket
+
 type Websocket struct {
 	conn   net.Conn
 	bufrw  *bufio.ReadWriter
 	header http.Header
 	status uint16
+	name   string
 }
 
 func main() {
@@ -48,6 +52,7 @@ var address = flag.String("address", "localhost:8080", "http address")
 func IndexHandler(w http.ResponseWriter, req *http.Request) {
 	websocket, err := InitWebsocket(w, req)
 	check(err)
+	sockets = append(sockets, *websocket)
 
 	err = websocket.Handshake()
 	check(err)
@@ -59,8 +64,17 @@ func IndexHandler(w http.ResponseWriter, req *http.Request) {
 			err = websocket.Close()
 			check(err)
 		}
-		websocket.Send(frame)
+		SendToAll(frame, websocket)
+	}
+}
 
+func SendToAll(frame Frame, sender *Websocket) {
+	fmt.Println(sockets)
+	for i := 0; i < len(sockets); i++ {
+		if sockets[i].conn != sender.conn {
+			err := sockets[i].Send(frame)
+			check(err)
+		}
 	}
 }
 
@@ -76,7 +90,7 @@ func InitWebsocket(w http.ResponseWriter, req *http.Request) (*Websocket, error)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 
-	return &Websocket{conn, bufrw, req.Header, 1000}, nil
+	return &Websocket{conn, bufrw, req.Header, 1000, "Socket " + strconv.Itoa(len(sockets)+1) + ": "}, nil
 }
 
 // Handshake Does initial handshake without closing.
@@ -217,6 +231,10 @@ func (ws *Websocket) Send(fr Frame) error {
 	if fr.IsFragment {
 		data[0] &= 0x7F
 	}
+
+	byteName := []byte(ws.name)
+	fr.Payload = append(byteName, fr.Payload...)
+	fr.Length += uint64(len(byteName))
 
 	if fr.Length <= 125 {
 		data[1] = byte(fr.Length)

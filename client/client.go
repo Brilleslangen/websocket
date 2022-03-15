@@ -41,15 +41,29 @@ func main() {
 	log.Println("Connected!")
 	log.Println(msg)
 
+	go WaitForOutgoing(c)
+	WaitForIncomming(c)
+
+}
+
+func WaitForOutgoing(c *websocket.Conn) {
 	for {
-		_, err2 := fmt.Scanln(&msg)
-		if err2 != nil {
+		var msg string
+		_, err := fmt.Scanln(&msg)
+		if err != nil {
 			return
 		}
 		mt := websocket.TextMessage
 		err = c.WriteMessage(mt, []byte(msg))
+		if err != nil {
+			return
+		}
+	}
+}
 
-		mt, msg, err = ReadMessage(c)
+func WaitForIncomming(c *websocket.Conn) {
+	for {
+		_, msg, err := ReadMessage(c)
 		if err != nil {
 			return
 		}
